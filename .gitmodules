@@ -1,0 +1,6 @@
+[submodule "lodepng"]
+	path = lodepng
+	url = https://github.com/lvandeve/lodepng.git
+[submodule "fuzztest"]
+	path = fuzztest
+	url = https://github.com/google/fuzztest.git
