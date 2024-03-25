@@ -11,52 +11,40 @@
 
 using namespace fuzztest;
 
+// Amount of valid colortype/bidthdepth combinations in the PNG file format.
+const size_t num_combinations = 15;
 
-// Input domain
-// Describes valid colortype values
-Domain<LodePNGColorType> AnyColortype() {
-    return ElementOf<LodePNGColorType>({LCT_GREY, LCT_RGB, LCT_PALETTE, LCT_GREY_ALPHA, LCT_RGBA});
-}
+LodePNGColorType colortypes[num_combinations] = {
+  LCT_GREY, LCT_GREY, LCT_GREY, LCT_GREY, LCT_GREY, // 1, 2, 4, 8 or 16 bits
+  LCT_RGB, LCT_RGB, // 8 or 16 bits
+  LCT_PALETTE, LCT_PALETTE, LCT_PALETTE, LCT_PALETTE, // 1, 2, 4 or 8 bits
+  LCT_GREY_ALPHA, LCT_GREY_ALPHA, // 8 or 16 bits
+  LCT_RGBA, LCT_RGBA, // 8 or 16 bits
+};
 
-// Input domain
-// Describes valid bitdepth values for a given colortype
-Domain<unsigned int> AnyBitdepthForColortype(LodePNGColorType t) {
-    switch(t) {
-        case LCT_GREY:
-            return ElementOf<unsigned int>({1, 2, 4, 8, 16});
-        case LCT_RGB:
-            return ElementOf<unsigned int>({8, 16});
-        case LCT_PALETTE:
-            return ElementOf<unsigned int>({1, 2, 4, 8});
-        case LCT_GREY_ALPHA:
-            return ElementOf<unsigned int>({8, 16});
-        case LCT_RGBA:
-            return ElementOf<unsigned int>({8, 16});
-        default:
-            assert(0);
-    }
-}
-
-// Input domain
-// Describes valid pairs of colortype and bitdepth
-Domain<std::pair<LodePNGColorType, unsigned int>> AnyColortypeBitdepthPair() {
-    auto valid_colortype_bitdepth_pair = [](const LodePNGColorType t) {
-        return PairOf(Just(t), AnyBitdepthForColortype(t));
-    };
-    return FlatMap(valid_colortype_bitdepth_pair, AnyColortype());
-}
+unsigned bitdepths[num_combinations] = {
+  1, 2, 4, 8, 16, // gray
+  8, 16, // rgb
+  1, 2, 4, 8, // palette
+  8, 16, // gray+alpha
+  8, 16, // rgb+alpha
+};
 
 // Helper function
 // Tries to decode a PNG image from the given settings and data
-unsigned TryDecode(lodepng::State& state, std::vector<unsigned char> &data) {
+unsigned TryDecode(lodepng::State& state, const std::vector<unsigned char> &data) {
     unsigned w, h;
     std::vector<unsigned char> image;
-    return lodepng::decode(image, w, h, state, data.data(), data.size());
+    return lodepng::decode(image, w, h, state, data);
 }
 
 // Fuzz test
 // Fuzzes the lodepng::decode function
-void FuzzLodepngDecode(std::vector<unsigned char> data, std::pair<LodePNGColorType, unsigned int> settings) {
+void FuzzLodepngDecode(const std::vector<unsigned char> &data, unsigned int idx) {
+    idx %= num_combinations;
+    LodePNGColorType colortype = colortypes[idx];
+    unsigned bitdepth = bitdepths[idx];
+
     // Make the decoder ignore three types of checksums the PNG/zlib format have
     // built-in, because they are less likely to be correct in the random input
     // data, and if invalid make the decoder return an error before much gets ran.
@@ -78,13 +66,10 @@ void FuzzLodepngDecode(std::vector<unsigned char> data, std::pair<LodePNGColorTy
         state.decoder.color_convert = 1;
         TryDecode(state, data);
 
-        state.info_raw.colortype = settings.first;
-        state.info_raw.bitdepth = settings.second;
+        state.info_raw.colortype = colortype;
+        state.info_raw.bitdepth = bitdepth;
         TryDecode(state, data);
     }
 }
-FUZZ_TEST(FuzztestSuite, FuzzLodepngDecode)
-    .WithDomains(
-        NonEmpty(Arbitrary<std::vector<unsigned char>>()),
-        AnyColortypeBitdepthPair());
+FUZZ_TEST(FuzztestSuite, FuzzLodepngDecode);
 
